@@ -1,0 +1,57 @@
+# Папки с результатами сборки
+bin/
+obj/
+
+# Локальные настройки пользователя
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Результаты сборки
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+*.dll
+*.exe
+*.pdb
+*.mdb
+*.ilk
+*.log
+*.cache
+*.tmp
+
+# Visual Studio
+.vs/
+*.csproj.user
+*.sln.ide
+*.DotSettings.user
+_ReSharper.Caches/
+*.sln.ide
+
+# MonoGame / Content Pipeline
+Content/bin/
+Content/obj/
+**/PipelineAssemblies/
+
+# Скомпилированные файлы контента (обычно генерируются из исходников)
+# Раскомментируйте следующую строку, если не храните .xnb в репозитории
+# *.xnb
+
+# NuGet
+packages/
+*.nupkg
+*.snupkg
+
+# Другое
+*.pidb
+*.psess
+*.vsp
+*.vspx
+*.sap
+*.loadtest
+*.psess
+*.vsmdi
+*.testsettings
