@@ -64,14 +64,13 @@ namespace MyGameEngine
 
         public static void LoadContent(ContentManager content)
         {
-            int count = 0;
             ProcessPendingAddRemove();
 
             foreach (var go in _gameObjects)
             {
+                // Загрузка текстур для SpriteRenderer
                 foreach (var renderer in go.GetComponents<SpriteRenderer>())
                 {
-                    count++;
                     if (!string.IsNullOrEmpty(renderer.TexturePath))
                     {
                         try
@@ -80,13 +79,27 @@ namespace MyGameEngine
                         }
                         catch (Exception ex)
                         {
-                            System.Diagnostics.Debug.WriteLine($"Failed to load {renderer.TexturePath}: {ex.Message}");
+                            System.Diagnostics.Debug.WriteLine($"Failed to load texture '{renderer.TexturePath}': {ex.Message}");
                         }
-                        System.Diagnostics.Debug.WriteLine($"[LOAD] {go.Name}: {renderer.TexturePath} -> {(renderer.Texture != null ? "OK" : "FAIL")}");
+                    }
+                }
+
+                // Загрузка шрифтов для UIText
+                foreach (var text in go.GetComponents<UIText>())
+                {
+                    if (!string.IsNullOrEmpty(text.FontPath))
+                    {
+                        try
+                        {
+                            text.Font = content.Load<SpriteFont>(text.FontPath);
+                        }
+                        catch (Exception ex)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Failed to load font '{text.FontPath}': {ex.Message}");
+                        }
                     }
                 }
             }
-            System.Diagnostics.Debug.WriteLine($"[LOAD] Total SpriteRenderers: {count}");
         }
 
         public static void Update(GameTime gameTime)
@@ -112,6 +125,9 @@ namespace MyGameEngine
 
         public static void Draw(SpriteBatch spriteBatch)
         {
+            // Собираем все SpriteRenderer и UIText
+            var drawables = new List<(object component, int sortingLayer, float layerDepth, Action<SpriteBatch> drawAction)>();
+
             foreach (var go in _gameObjects)
             {
                 if (!go.ActiveInHierarchy)
@@ -119,10 +135,43 @@ namespace MyGameEngine
 
                 foreach (var renderer in go.GetComponents<SpriteRenderer>())
                 {
-                    if (renderer.Enabled)
-                        renderer.Draw(spriteBatch);
+                    if (renderer.Enabled && renderer.Texture != null)
+                    {
+                        drawables.Add((
+                            renderer,
+                            renderer.SortingLayer,
+                            renderer.LayerDepth,
+                            renderer.Draw
+                        ));
+                    }
+                }
+
+                foreach (var text in go.GetComponents<UIText>())
+                {
+                    if (text.Enabled && text.Font != null && !string.IsNullOrEmpty(text.Text))
+                    {
+                        drawables.Add((
+                            text,
+                            text.SortingLayer,
+                            text.LayerDepth,
+                            text.Draw
+                        ));
+                    }
                 }
             }
+
+            // Сортировка: сначала SortingLayer (по возрастанию), затем LayerDepth (по возрастанию)
+            drawables.Sort((a, b) =>
+            {
+                int layerCompare = a.sortingLayer.CompareTo(b.sortingLayer);
+                if (layerCompare != 0)
+                    return layerCompare;
+                return a.layerDepth.CompareTo(b.layerDepth);
+            });
+
+            // Отрисовка в порядке сортировки
+            foreach (var item in drawables)
+                item.drawAction(spriteBatch);
         }
 
         public static IEnumerable<T> FindComponentsOfType<T>() where T : Behaviour

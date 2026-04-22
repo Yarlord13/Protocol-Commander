@@ -1,4 +1,4 @@
-# Документация по использованию игрового движка (версия 2.0)
+# Документация по использованию игрового движка (версия 2.1)
 
 ## Оглавление
 1. [Обзор системы](#обзор-системы)
@@ -15,6 +15,9 @@
 5. [Иерархия объектов](#иерархия-объектов)
 6. [Системные компоненты](#системные-компоненты)
    - [SpriteRenderer](#spriterenderer)
+   - [UIText](#uitext)
+   - [UIButton](#uibutton)
+   - [Animation](#animation)
 7. [Расширение функционала](#расширение-функционала)
    - [Создание нового поведения](#создание-нового-поведения)
    - [Создание нового системного компонента](#создание-нового-системного-компонента)
@@ -36,10 +39,11 @@
 - **Scene** – статический менеджер, управляющий всеми объектами, их обновлением и отрисовкой.
 - **ResolutionManager** – утилита для адаптации координат под любое разрешение экрана с сохранением пропорций.
 
-**Новое в версии 2.0:**
-- Полная поддержка иерархии объектов (родительские `Transform`).
-- Гибкая настройка размера: фиксированный (`Fixed`) или растянутый с отступами (`Stretch`) по каждой оси отдельно.
-- Создание объекта теперь требует передачи предварительно сконфигурированного `Transform`, что даёт полный контроль над расположением и поведением при изменении размеров родителя.
+**Новое в версии 2.1:**
+- Компонент **UIText** для отрисовки текста с поддержкой выравнивания и масштабирования.
+- Компонент **UIButton** для создания интерактивных кнопок с событиями мыши.
+- Компонент **Animation** для анимации свойств объектов с поддержкой именованных клипов и нескольких анимируемых полей.
+- В **SpriteRenderer** добавлено поле `SortingLayer` (целое число) для управления порядком отрисовки совместно с `LayerDepth`.
 
 ---
 
@@ -107,9 +111,9 @@
 | `CreateGameObject(string name, Transform transform, params Behaviour[] components)` | Создаёт GameObject с заданным Transform и добавляет его в сцену. |
 | `AddGameObject(go)` | Добавляет существующий GameObject. |
 | `RemoveGameObject(go)` | Удаляет GameObject из сцены. |
-| `LoadContent(ContentManager)` | Загружает текстуры для всех SpriteRenderer. |
+| `LoadContent(ContentManager)` | Загружает текстуры для всех SpriteRenderer и шрифты для UIText. |
 | `Update(GameTime)` | Обновляет все активные объекты и компоненты. |
-| `Draw(SpriteBatch)` | Отрисовывает все SpriteRenderer. |
+| `Draw(SpriteBatch)` | Отрисовывает все SpriteRenderer и UIText с учётом сортировки по слоям. |
 | `FindComponentsOfType<T>()` | Возвращает все компоненты заданного типа. |
 
 ---
@@ -271,7 +275,8 @@ child.Transform.SetParent(parent.Transform);
 | `Color` | Цветовой оттенок (по умолчанию `White`). |
 | `SourceRectangle` | Область текстуры для отрисовки (`null` – вся). |
 | `Effects` | `SpriteEffects` (отражение). |
-| `LayerDepth` | Глубина для сортировки. |
+| `LayerDepth` | Глубина для сортировки (0.0 – передний план, 1.0 – задний). |
+| `SortingLayer` | **Новое:** целочисленный слой отрисовки. Чем больше число, тем позже рисуется объект (поверх других). По умолчанию 0. |
 
 **Пример:**
 
@@ -279,9 +284,162 @@ child.Transform.SetParent(parent.Transform);
 var renderer = new SpriteRenderer("enemy")
 {
     Color = Color.Red,
-    Effects = SpriteEffects.FlipHorizontally
+    Effects = SpriteEffects.FlipHorizontally,
+    SortingLayer = 10,   // будет отрисован поверх объектов с меньшим слоем
+    LayerDepth = 0.2f
 };
 ```
+
+> **Сортировка:** При отрисовке все компоненты `SpriteRenderer` и `UIText` сортируются сначала по `SortingLayer` (по возрастанию), затем по `LayerDepth` (по возрастанию). Это позволяет гибко управлять порядком отображения.
+
+---
+
+### UIText
+
+Компонент для отрисовки текста с использованием `SpriteFont`. Аналогичен `SpriteRenderer`, но для текста.
+
+| Свойство | Описание |
+|----------|----------|
+| `FontPath` | Путь к файлу шрифта (`.spritefont`) относительно `Content`. |
+| `Font` | Загруженный шрифт (заполняется автоматически). |
+| `Text` | Отображаемая строка. |
+| `Color` | Цвет текста. |
+| `Alignment` | Выравнивание текста внутри прямоугольной области (`Left`, `Center`, `Right`). |
+| `Scale` | Масштаб текста (умножается на размер шрифта). |
+| `LayerDepth` | Глубина слоя (аналогично `SpriteRenderer`). |
+| `SortingLayer` | Слой отрисовки (целое число). |
+
+**Конструкторы:**
+
+```csharp
+public UIText() { }
+public UIText(string fontPath, string text = "", Color? color = null, float scale = 1f, TextAlignment alignment = TextAlignment.Left)
+```
+
+**Пример:**
+
+```csharp
+var textObj = Scene.CreateGameObject("ScoreLabel", textTransform,
+    new UIText("Fonts/Arial", "Score: 0", Color.Gold, 2.0f, TextAlignment.Center)
+);
+```
+
+---
+
+### UIButton
+
+Компонент для создания интерактивных кнопок, реагирующих на мышь. Отслеживает попадание курсора в границы объекта и состояние левой кнопки мыши.
+
+| Свойство | Описание |
+|----------|----------|
+| `Interactable` | Включена ли кнопка (если `false`, события не вызываются). |
+
+**События:**
+
+| Событие | Описание |
+|---------|----------|
+| `OnFocusEnter` | Курсор вошёл в границы кнопки. |
+| `OnFocusExit` | Курсор покинул границы кнопки. |
+| `OnPointerDown` | Нажата левая кнопка мыши над кнопкой. |
+| `OnPointerUp` | Отпущена левая кнопка мыши над кнопкой (после нажатия). |
+| `OnClick` | Успешный клик (нажатие и отпускание над кнопкой). |
+| `OnPressed` | Вызывается каждый кадр, пока кнопка нажата и курсор над ней. |
+| `OnEnable` | Вызывается при установке `Interactable = true`. |
+| `OnDisable` | Вызывается при установке `Interactable = false`. |
+
+**Конструкторы:**
+
+```csharp
+public UIButton() { }
+public UIButton(
+    Action onClick = null,
+    Action onFocusEnter = null,
+    Action onFocusExit = null,
+    Action onPointerDown = null,
+    Action onPointerUp = null,
+    bool interactable = true)
+```
+
+**Пример:**
+
+```csharp
+var button = Scene.CreateGameObject("MyButton", btnTransform,
+    new SpriteRenderer("Sprites/button"),
+    new UIButton(
+        onClick: () => Console.WriteLine("Clicked!"),
+        onFocusEnter: () => btnGo.GetComponent<SpriteRenderer>().Color = Color.Yellow,
+        onFocusExit: () => btnGo.GetComponent<SpriteRenderer>().Color = Color.White
+    )
+);
+```
+
+> **Важно:** Координаты мыши автоматически преобразуются в эталонные с помощью `ResolutionManager.ToReference`, поэтому попадания корректно работают при любом разрешении экрана.
+
+---
+
+### Animation
+
+Компонент для анимации значений произвольных типов (`float`, `Vector2`, `Color` и т.д.). Позволяет создавать именованные анимационные клипы, каждый из которых может содержать несколько дорожек, изменяющих различные свойства объектов.
+
+**Основные классы:**
+
+- **`AnimationClip`** – именованный набор анимационных дорожек с общей длительностью и флагом зацикливания.
+- **`AnimationTrack<T>`** – дорожка, связывающая конкретное свойство объекта (через делегаты `setter`/`getter`) с ключевыми кадрами типа `T`.
+- **`Keyframe<T>`** – пара (время, значение).
+
+**Класс `Animation` (компонент):**
+
+| Член | Описание |
+|------|----------|
+| `State` | Текущее состояние (`Stopped`, `Playing`, `Paused`). |
+| `AddClip(AnimationClip clip)` | Добавляет именованный клип. |
+| `RemoveClip(string name)` | Удаляет клип по имени. |
+| `HasClip(string name)` | Проверяет наличие клипа. |
+| `Play(string clipName)` | Запускает воспроизведение клипа с начала. |
+| `Pause()` | Приостанавливает анимацию. |
+| `Resume()` | Возобновляет после паузы. |
+| `Stop()` | Останавливает и сбрасывает текущий клип. |
+| `OnFinished` | Событие, вызываемое при завершении клипа (если не зациклен). |
+
+**Создание анимационного клипа:**
+
+```csharp
+var clip = new AnimationClip("Move", loop: true);
+
+// Добавляем дорожку, изменяющую позицию объекта
+var posTrack = clip.AddTrack<Vector2>(
+    setter: v => myObject.Transform.Position = v,
+    getter: () => myObject.Transform.Position
+);
+posTrack.SetKeyframes(new[] {
+    new Keyframe<Vector2>(0f, new Vector2(0, 0)),
+    new Keyframe<Vector2>(1f, new Vector2(500, 0)),
+    new Keyframe<Vector2>(2f, new Vector2(0, 0))
+});
+
+// Можно добавить вторую дорожку для изменения цвета спрайта
+var colorTrack = clip.AddTrack<Color>(
+    setter: c => myObject.GetComponent<SpriteRenderer>().Color = c,
+    getter: () => myObject.GetComponent<SpriteRenderer>().Color
+);
+colorTrack.SetKeyframes(new[] {
+    new Keyframe<Color>(0f, Color.White),
+    new Keyframe<Color>(1f, Color.Red),
+    new Keyframe<Color>(2f, Color.White)
+});
+
+// Добавляем клип в компонент анимации
+var anim = myObject.AddComponent<Animation>();
+anim.AddClip(clip);
+
+// Запускаем
+anim.Play("Move");
+```
+
+**Поддерживаемые типы для интерполяции:**
+`float`, `Vector2`, `Vector3`, `Color`, `int` (линейная интерполяция с округлением). Для других типов потребуется расширение класса.
+
+> **Примечание:** Анимация автоматически вызывает `Sample()` в методе `Update()`, поэтому явно применять значения не нужно.
 
 ---
 
@@ -408,6 +566,8 @@ public class Game1 : Game
 5. **Не изменяйте `Transform` после добавления объекта в сцену без необходимости** – изменения позиции/размера во время игры допустимы, но следует учитывать, что `Start()` уже был вызван.
 6. **Для производительности избегайте частого вызова `GetComponent<T>()` в `Update()`** – кэшируйте ссылки в `Start()`.
 7. **Используйте `ActiveSelf` для временного отключения объектов** вместо их уничтожения.
+8. **При работе с анимациями** создавайте клипы один раз в `Start()` или при построении сцены, чтобы избежать лишних аллокаций.
+9. **Для UIButton** подписывайтесь на события в `Start()` или через конструктор для читаемости.
 
 ---
 

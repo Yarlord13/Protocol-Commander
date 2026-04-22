@@ -8,12 +8,29 @@ namespace MyGameEngine
     /// </summary>
     public class SpriteRenderer : Behaviour
     {
+        /// <summary>Путь к текстуре относительно папки Content (без расширения).</summary>
         public string TexturePath { get; set; }
+
+        /// <summary>Загруженная текстура (заполняется автоматически в Scene.LoadContent).</summary>
         public Texture2D Texture { get; internal set; }
+
+        /// <summary>Цветовой оттенок спрайта.</summary>
         public Color Color { get; set; } = Color.White;
+
+        /// <summary>Область текстуры для отрисовки (null – вся текстура).</summary>
         public Rectangle? SourceRectangle { get; set; }
+
+        /// <summary>Эффекты отражения спрайта.</summary>
         public SpriteEffects Effects { get; set; } = SpriteEffects.None;
+
+        /// <summary>Глубина слоя (0.0 – передний план, 1.0 – задний). Используется для сортировки внутри одного SortingLayer.</summary>
         public float LayerDepth { get; set; } = 0f;
+
+        /// <summary>
+        /// Слой отрисовки (целое число). Чем больше значение, тем позже рисуется объект (выше).
+        /// По умолчанию 0, может быть отрицательным.
+        /// </summary>
+        public int SortingLayer { get; set; } = 0;
 
         public SpriteRenderer(string texturePath = null)
         {

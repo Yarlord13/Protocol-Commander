@@ -21,7 +21,7 @@ namespace MyGameEngine
 
         public static void Initialize(GraphicsDevice graphicsDevice)
         {
-            if (_initialized) return;
+            // Убрана блокировка повторной инициализации, чтобы можно было обновлять размеры
             if (graphicsDevice == null)
                 throw new ArgumentNullException(nameof(graphicsDevice), "GraphicsDevice не может быть null.");
 
