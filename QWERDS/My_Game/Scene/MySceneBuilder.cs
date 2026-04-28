@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using MyGameEngine;
+using QWERDS;
 
 /// <summary>
 /// Класс-строитель сцены. Здесь описываются все игровые объекты.
@@ -14,57 +15,76 @@ public static class MySceneBuilder
 
         Scene.Initialize();
 
-        // === Пример 1: Игрок в центре экрана с фиксированным размером ===
-        var playerTransform = new Transform
-        {
-            Anchor = new Vector2(0.5f, 0.5f), // привязка к центру экрана
-            Position = Vector2.Zero,          // без смещения
-            Size = new Vector2(200, 200),     // фиксированный размер 200x200 эталонных пикселей
-            Origin = new Vector2(0.5f, 0.5f)  // центр объекта в точке привязки
-        };
-        var player = Scene.CreateGameObject("Player", playerTransform);
+        // Строим главное меню
+        MainMenu();
+    }
 
-        // === Пример 2: Кнопка в правом нижнем углу с отступом 20 пикселей от краёв ===
-        var buttonTransform = new Transform
-        {
-            Anchor = new Vector2(1f, 1f),     // правый нижний угол экрана
-            Position = new Vector2(-20, -20), // смещение влево и вверх (отрицательные, т.к. Anchor в углу)
-            Size = new Vector2(300, 100),     // фиксированный размер
-            Origin = new Vector2(1f, 1f)      // правый нижний угол объекта привязывается к точке
-        };
-        var button = Scene.CreateGameObject("Button", buttonTransform,
-            new SpriteRenderer("Sprites/RobotGG"));
+    /// <summary>
+    /// Создаёт адаптивное главное меню с заголовком и тремя кнопками по центру.
+    /// </summary>
+    public static void MainMenu()
+    {
+        var baseColor = new Color(106, 138, 57);
 
-        // === Пример 3: Панель, растянутая по ширине с отступами 50 слева/справа, фиксированная высота ===
-        var panelTransform = new Transform
+        // === Заголовок игры ===
+        var titleTransform = new Transform
         {
-            Anchor = new Vector2(0.5f, 0f),   // привязка к центру верхней границы экрана
-            Position = new Vector2(0, 30),    // отступ сверху 30 пикселей
-            SizeModeX = SizeMode.Stretch,     // растяжение по X
-            StretchLeft = 50,
-            StretchRight = 50,
-            SizeModeY = SizeMode.Fixed,
-            Size = new Vector2(0, 100),       // высота 100, ширина игнорируется из-за Stretch
-            Origin = new Vector2(0.5f, 0f)    // привязка по центру верхнего края
-        };
-        var panel = Scene.CreateGameObject("TopPanel", panelTransform,
-            new SpriteRenderer("Sprites/RobotGG"));
-
-        // === Пример 4: Дочерний объект внутри панели, растянутый по высоте панели с отступами ===
-        var childTransform = new Transform
-        {
-            Anchor = new Vector2(0f, 0f),     // левый верхний угол панели
-            Position = new Vector2(20, 20),   // отступ от левого верхнего угла панели
+            Anchor = new Vector2(0.5f, 0f),      // центр верхней границы экрана
+            Position = new Vector2(0, 80),        // отступ сверху 80 эталонных пикселей
+            Size = new Vector2(800, 100),         // фиксированная область для текста
+            Origin = new Vector2(0.5f, 0f),       // точка привязки: центр верхней границы
             SizeModeX = SizeMode.Fixed,
-            Size = new Vector2(150, 0),       // фиксированная ширина
-            SizeModeY = SizeMode.Stretch,
-            StretchTop = 20,
-            StretchBottom = 20,
-            Origin = Vector2.Zero
+            SizeModeY = SizeMode.Fixed
         };
-        // Устанавливаем родителя
-        childTransform.SetParent(panel.Transform);
-        var child = Scene.CreateGameObject("PanelChild", childTransform,
-            new SpriteRenderer("Sprites/RobotGG"));
+
+        Scene.CreateGameObject("Title", titleTransform,
+            new UIText("Fonts/PixelFont", "Protocol Commander", baseColor, 3.0f, TextAlignment.Center)
+        );
+
+        // === Кнопки меню ===
+        // Массив с текстами кнопок и их вертикальными смещениями относительно центра экрана
+        string[] buttonTexts = { "Играть", "О проекте", "Выход" };
+        Vector2[] buttonOffsets = {
+            new Vector2(0, -80),   // первая кнопка выше центра
+            new Vector2(0, 0),     // вторая кнопка точно в центре
+            new Vector2(0, 80)     // третья кнопка ниже центра
+        };
+
+        for (int i = 0; i < buttonTexts.Length; i++)
+        {
+            var btnTransform = new Transform
+            {
+                Anchor = new Vector2(0.5f, 0.5f),   // центр экрана
+                Position = buttonOffsets[i],
+                Size = new Vector2(300, 60),         // фиксированный размер кнопки
+                Origin = new Vector2(0.5f, 0.5f),    // точка привязки – центр кнопки
+                SizeModeX = SizeMode.Fixed,
+                SizeModeY = SizeMode.Fixed
+            };
+
+            // Создаём объект кнопки с фоном, текстом и логикой взаимодействия
+            GameObject btnObj = Scene.CreateGameObject($"Button_{buttonTexts[i]}", btnTransform,
+                new SpriteRenderer("Sprites/Panel") { Color = new Color(80, 80, 80) },
+                new UIText("Fonts/PixelFont", buttonTexts[i], baseColor, 1.5f, TextAlignment.Center),
+                new UIButton()
+            );
+
+            // Для кнопки "Выход" назначаем действие закрытия игры
+            if (buttonTexts[i] == "Выход")
+            {
+                var exitBtn = btnObj.GetComponent<UIButton>();
+                if (exitBtn != null)
+                    exitBtn.OnClick += () => Game1.InstanceGame.Exit();
+            }
+
+            // Визуальная обратная связь при наведении мыши
+            var btnSprite = btnObj.GetComponent<SpriteRenderer>();
+            var btnUI = btnObj.GetComponent<UIButton>();
+            if (btnUI != null && btnSprite != null)
+            {
+                btnUI.OnFocusEnter += () => btnSprite.Color = new Color(120, 120, 120);
+                btnUI.OnFocusExit += () => btnSprite.Color = new Color(80, 80, 80);
+            }
+        }
     }
 }

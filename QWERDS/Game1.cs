@@ -9,6 +9,7 @@ namespace QWERDS
 {
     public class Game1 : Core
     {
+        public static Game1 InstanceGame { get; private set; }
         private int _windowedWidth = 1280;
         private int _windowedHeight = 720;
         private bool _isFullscreen;
@@ -16,6 +17,7 @@ namespace QWERDS
 
         public Game1() : base("Protocol commander", 1920, 1080, true)
         {
+            InstanceGame = this;
             // Настраиваем полноэкранный режим по умолчанию
             Graphics.PreferredBackBufferWidth = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width;
             Graphics.PreferredBackBufferHeight = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height;
@@ -118,7 +120,7 @@ namespace QWERDS
         {
             GraphicsDevice.Clear(new Color(26, 26, 26));
 
-            SpriteBatch.Begin();
+            SpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp);
             MyGameEngine.Scene.Draw(SpriteBatch);
             SpriteBatch.End();
 

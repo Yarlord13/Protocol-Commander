@@ -38,6 +38,8 @@ namespace MyGameEngine
             Vector2 screenSize = Transform.GetScreenSize();
             Vector2 textSize = Font.MeasureString(Text) * Scale;
 
+            Vector2 originOffset = new Vector2(Transform.Origin.X * screenSize.X, Transform.Origin.Y * screenSize.Y);
+
             Vector2 offset = Vector2.Zero;
             switch (Alignment)
             {
@@ -54,7 +56,7 @@ namespace MyGameEngine
                     break;
             }
 
-            Vector2 finalPos = screenPos + offset;
+            Vector2 finalPos = screenPos - originOffset + offset;
 
             spriteBatch.DrawString(
                 Font,

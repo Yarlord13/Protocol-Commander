@@ -48,7 +48,11 @@ namespace MyGameEngine
 
             Vector2 worldPos = Transform.GetWorldPosition();
             Vector2 worldSize = Transform.GetWorldSize();
-            RectangleF bounds = new RectangleF(worldPos.X, worldPos.Y, worldSize.X, worldSize.Y);
+
+            Vector2 originOffset = new Vector2(Transform.Origin.X * worldSize.X, Transform.Origin.Y * worldSize.Y);
+            Vector2 visualPos = worldPos - originOffset;
+
+            RectangleF bounds = new RectangleF(visualPos.X, visualPos.Y, worldSize.X, worldSize.Y);
 
             bool isInside = bounds.Contains(mouseRef);
             bool leftPressed = mouse.LeftButton == ButtonState.Pressed;
