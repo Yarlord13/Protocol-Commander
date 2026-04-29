@@ -13,41 +13,36 @@ namespace QWERDS
         private int _windowedWidth = 1280;
         private int _windowedHeight = 720;
         private bool _isFullscreen;
-        private KeyboardState _prevKeyState;
 
         public Game1() : base("Protocol commander", 1920, 1080, true)
         {
             InstanceGame = this;
-            // Настраиваем полноэкранный режим по умолчанию
             Graphics.PreferredBackBufferWidth = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width;
             Graphics.PreferredBackBufferHeight = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height;
             _isFullscreen = true;
 
-            // Разрешаем изменение размера окна
             Window.AllowUserResizing = true;
-            
-            // ВАЖНО: подписываемся на событие, но проверка GraphicsDevice внутри обработчика
-            // предотвратит ошибки до инициализации.
             Window.ClientSizeChanged += OnWindowResized;
+
+            // Подписка на системный ввод символов (раскладка учитывается автоматически)
+            Window.TextInput += (s, args) => InputManager.FeedTextInput(args.Character);
 
             Graphics.ApplyChanges();
         }
 
         private void OnWindowResized(object sender, EventArgs e)
         {
-            // Если GraphicsDevice ещё не создан, ничего не делаем.
-            if (GraphicsDevice == null)
-                return;
+            if (GraphicsDevice == null) return;
 
-            // Сохраняем размеры окна только в оконном режиме
             if (!_isFullscreen)
             {
                 _windowedWidth = Window.ClientBounds.Width;
                 _windowedHeight = Window.ClientBounds.Height;
             }
 
-            // Обновляем менеджер разрешения, чтобы пересчитать масштаб
             ResolutionManager.Initialize(GraphicsDevice);
+            // Обновляем вьюпорт
+            GraphicsDevice.Viewport = new Viewport(0, 0, Window.ClientBounds.Width, Window.ClientBounds.Height);
         }
 
         private void ToggleFullScreen()
@@ -56,10 +51,8 @@ namespace QWERDS
 
             if (_isFullscreen)
             {
-                // Сохраняем текущий размер окна перед переходом в полноэкранный режим
                 _windowedWidth = Window.ClientBounds.Width;
                 _windowedHeight = Window.ClientBounds.Height;
-
                 Graphics.PreferredBackBufferWidth = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Width;
                 Graphics.PreferredBackBufferHeight = GraphicsAdapter.DefaultAdapter.CurrentDisplayMode.Height;
                 Graphics.IsFullScreen = true;
@@ -72,22 +65,20 @@ namespace QWERDS
             }
 
             Graphics.ApplyChanges();
-            
-            // После применения изменений GraphicsDevice уже существует, можно обновить ResolutionManager
+
             if (GraphicsDevice != null)
+            {
                 ResolutionManager.Initialize(GraphicsDevice);
+                GraphicsDevice.Viewport = new Viewport(0, 0, Graphics.PreferredBackBufferWidth, Graphics.PreferredBackBufferHeight);
+            }
         }
 
         protected override void Initialize()
         {
-            // Строим сцену
             MySceneBuilder.Build();
-
-            // Базовая инициализация (создаёт GraphicsDevice)
             base.Initialize();
-
-            // Теперь GraphicsDevice точно готов, инициализируем менеджер разрешения
             ResolutionManager.Initialize(GraphicsDevice);
+            GraphicsDevice.Viewport = new Viewport(0, 0, GraphicsDevice.Viewport.Width, GraphicsDevice.Viewport.Height);
         }
 
         protected override void LoadContent()
@@ -99,18 +90,19 @@ namespace QWERDS
 
         protected override void Update(GameTime gameTime)
         {
-            var keyboardState = Keyboard.GetState();
+            // Обновляем состояния ввода один раз за кадр
+            InputManager.Update();
 
+            // Выход по Escape
             if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
-                keyboardState.IsKeyDown(Keys.Escape))
+                InputManager.IsKeyPressed(Keys.Escape))
                 Exit();
 
-            // Переключение полноэкранного режима по F11 (однократное срабатывание)
-            if (keyboardState.IsKeyDown(Keys.F11) && _prevKeyState.IsKeyUp(Keys.F11))
+            // Переключение полноэкранного режима по F11 (однократное нажатие)
+            if (InputManager.IsKeyPressed(Keys.F11))
             {
                 ToggleFullScreen();
             }
-            _prevKeyState = keyboardState;
 
             MyGameEngine.Scene.Update(gameTime);
             base.Update(gameTime);

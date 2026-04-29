@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Content;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace MyGameEngine
 {
@@ -19,6 +20,7 @@ namespace MyGameEngine
 
         public static IReadOnlyList<GameObject> GameObjects => _gameObjects;
         public static bool IsInitialized { get; private set; }
+        public static ContentManager Content { get; private set; }
 
         /// <summary>
         /// Инициализирует сцену. Должен быть вызван до создания любых объектов.
@@ -64,6 +66,7 @@ namespace MyGameEngine
 
         public static void LoadContent(ContentManager content)
         {
+            Content = content;   // сохраняем для последующих дозагрузок
             ProcessPendingAddRemove();
 
             foreach (var go in _gameObjects)
@@ -106,7 +109,11 @@ namespace MyGameEngine
         {
             ProcessPendingAddRemove();
 
-            foreach (var comp in _pendingStart)
+            // Безопасная обработка _pendingStart: копируем и очищаем, чтобы Start() мог регистрировать новые компоненты
+            Behaviour[] startBatch = _pendingStart.ToArray();
+            _pendingStart.Clear();
+
+            foreach (var comp in startBatch)
             {
                 if (comp.GameObject != null && comp.GameObject.ActiveInHierarchy && !comp.Started)
                 {
@@ -114,9 +121,10 @@ namespace MyGameEngine
                     comp.Started = true;
                 }
             }
-            _pendingStart.Clear();
 
-            foreach (var go in _gameObjects)
+            // Работаем с копией, чтобы избежать ошибки изменения коллекции во время итерации
+            GameObject[] objectsToUpdate = _gameObjects.ToArray();
+            foreach (var go in objectsToUpdate)
             {
                 if (go.ActiveInHierarchy)
                     go.UpdateComponents(gameTime);
@@ -128,7 +136,9 @@ namespace MyGameEngine
             // Собираем все SpriteRenderer и UIText
             var drawables = new List<(object component, int sortingLayer, float layerDepth, Action<SpriteBatch> drawAction)>();
 
-            foreach (var go in _gameObjects)
+            // Копируем список, чтобы избежать проблем при возможных модификациях
+            GameObject[] objectsToDraw = _gameObjects.ToArray();
+            foreach (var go in objectsToDraw)
             {
                 if (!go.ActiveInHierarchy)
                     continue;
@@ -183,18 +193,23 @@ namespace MyGameEngine
 
         private static void ProcessPendingAddRemove()
         {
-            foreach (var go in _toAdd)
+            // Копируем списки на случай рекурсивных вызовов (не обязательно, но безопасно)
+            GameObject[] toAdd = _toAdd.ToArray();
+            _toAdd.Clear();
+
+            foreach (var go in toAdd)
             {
                 if (!_gameObjects.Contains(go))
                     _gameObjects.Add(go);
             }
-            _toAdd.Clear();
 
-            foreach (var go in _toRemove)
+            GameObject[] toRemove = _toRemove.ToArray();
+            _toRemove.Clear();
+
+            foreach (var go in toRemove)
             {
                 _gameObjects.Remove(go);
             }
-            _toRemove.Clear();
         }
     }
 }

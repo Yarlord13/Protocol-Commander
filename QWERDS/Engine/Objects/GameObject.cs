@@ -42,6 +42,27 @@ namespace MyGameEngine
                             activatable.OnDisable();
                     }
                 }
+                if (_activeSelf && ActiveInHierarchy)
+                {
+                    // Запускаем Start себе и всем дочерним объектам
+                    RegisterStartRecursive();
+                }
+            }
+        }
+
+        private void RegisterStartRecursive()
+        {
+            foreach (var comp in _components)
+            {
+                if (!comp.Started)
+                    Scene.RegisterPendingStart(comp);
+            }
+            if (Transform != null)
+            {
+                foreach (var child in Transform.Children)
+                {
+                    child.GameObject?.RegisterStartRecursive();
+                }
             }
         }
 
@@ -111,6 +132,36 @@ namespace MyGameEngine
         /// </summary>
         public T GetComponent<T>() where T : Behaviour
             => _components.OfType<T>().FirstOrDefault();
+        
+        /// <summary>
+        /// Рекурсивно ищет компонент указанного типа в этом GameObject и всех его дочерних объектах.
+        /// </summary>
+        /// <typeparam name="T">Тип компонента (наследник Behaviour).</typeparam>
+        /// <returns>Первый найденный компонент или null, если не найден.</returns>
+        public T GetComponentInChildren<T>() where T : Behaviour
+        {
+            // Сначала ищем в самом объекте
+            var component = GetComponent<T>();
+            if (component != null)
+                return component;
+
+            // Рекурсивно обходим всех детей через Transform.Children
+            if (Transform != null)
+            {
+                foreach (var childTransform in Transform.Children)
+                {
+                    var childGo = childTransform.GameObject;
+                    if (childGo != null)
+                    {
+                        var found = childGo.GetComponentInChildren<T>();
+                        if (found != null)
+                            return found;
+                    }
+                }
+            }
+
+            return null;
+        }
 
         /// <summary>
         /// Возвращает все компоненты указанного типа.
