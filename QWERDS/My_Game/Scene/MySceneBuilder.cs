@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using MyGameEngine;
 using QWERDS;
@@ -12,25 +13,58 @@ public enum GameMode
 
 public static class MySceneBuilder
 {
-    private static Transform CreateRootTransform() => new Transform() { SizeModeX = SizeMode.Stretch, SizeModeY = SizeMode.Stretch, StretchBottom = 0, StretchLeft = 0, StretchRight = 0, StretchTop = 0 };
-    // Корневые объекты для каждого режима (создаются один раз)
+    // Все буквы русского алфавита
+    private static readonly char[] AllLetters = "абвгдежзийклмнопрстуфхцчшщъыьэюя".ToCharArray();
+
+    private static Transform CreateRootTransform() => new Transform()
+    {
+        SizeModeX = SizeMode.Stretch,
+        SizeModeY = SizeMode.Stretch,
+        StretchBottom = 0,
+        StretchLeft = 0,
+        StretchRight = 0,
+        StretchTop = 0
+    };
+
+    // Корневые объекты
     private static GameObject _mainMenuRoot;
     private static GameObject _battleRoot;
     private static GameObject _protocolSetupRoot;
 
-    // Текущий активный режим
-    public static GameMode CurrentMode { get; private set; } = GameMode.None;
+    // Менеджеры
+    private static ProtocolSetupManager _protocolSetupMgr;
 
+    // UI настройки протокола
+    private static UIText _robotNameText;
+    private static GameObject[] _letterButtons; // по индексу буквы в AllLetters
+    private static GameObject _selectedLetterButton;
+    private static int _selectedLetterIndex = -1; // -1 = нет выбора
+    private static Transform _skillListPanel;
+    private static readonly List<GameObject> _skillButtons = new List<GameObject>();
+
+    public static GameMode CurrentMode { get; private set; } = GameMode.None;
     public static void Build()
     {
         Scene.Initialize();
 
-        // Создаём корневые объекты (неактивные)
+        // Инициализация глобального состояния
+        GameState.Reset();
+        // Три робота с начальными навыками
+        GameState.Robots.Add(new Robot("Альфа"));
+        GameState.Robots.Add(new Robot("Браво"));
+        GameState.Robots.Add(new Robot("Чарли"));
+        // Начальные привязки (пример)
+        GameState.Robots[0].SkillSlots.Add(new AttackAction());
+        GameState.Robots[0].SkillSlots.Add(new HealAction());
+        GameState.Robots[0].LetterBindings['а'] = GameState.Robots[0].SkillSlots[0];
+        GameState.Robots[0].LetterBindings['л'] = GameState.Robots[0].SkillSlots[1];
+
+        WordValidator.Initialize();
+
         CreateMainMenu();
         CreateBattleMode();
         CreateProtocolSetupMode();
 
-        // Запускаем главное меню
         SwitchToMainMenu();
     }
 
@@ -100,15 +134,24 @@ public static class MySceneBuilder
         }
     }
 
-    // ==================== Режим битвы ====================
+    // ==================== Режим битвы (небольшие дополнения) ====================
     private static void CreateBattleMode()
     {
         if (_battleRoot != null) return;
 
-        _battleRoot = Scene.CreateGameObject("BattleRoot", CreateRootTransform());
+        var battleRootTransform = new Transform()
+        {
+            SizeModeX = SizeMode.Stretch,
+            SizeModeY = SizeMode.Stretch,
+            StretchBottom = 0,
+            StretchLeft = 0,
+            StretchRight = 960,
+            StretchTop = 0
+        };
+        _battleRoot = Scene.CreateGameObject("BattleRoot", battleRootTransform);
         _battleRoot.ActiveSelf = false;
 
-        // Поле ввода слова
+        // Поле ввода (как раньше)
         var inputTransform = new Transform
         {
             Anchor = new Vector2(0.5f, 0.5f),
@@ -123,20 +166,25 @@ public static class MySceneBuilder
         );
         inputObj.Transform.SetParent(_battleRoot.Transform);
 
-        // Подписка на события
-        var inputField = inputObj.GetComponent<UIInputField>();
-        if (inputField != null)
+        // Лог битвы
+        var logTransform = new Transform
         {
-            inputField.OnTextChanged += (text) =>
-                System.Diagnostics.Debug.WriteLine($"Текущий текст: '{text}'");
-            inputField.OnSubmit += (word) =>
-            {
-                System.Diagnostics.Debug.WriteLine($"Отправлено слово: '{word}'");
-                // В будущем: проверка уникальности, посимвольное выполнение
-            };
-        }
+            Anchor = new Vector2(0, 0),
+            Position = new Vector2(20, 20),
+            Size = new Vector2(500, 200),
+            Origin = Vector2.Zero
+        };
+        var logObj = Scene.CreateGameObject("BattleLog", logTransform,
+            new UIText("Fonts/PixelFont", "", Color.White, 1.2f, TextAlignment.Left, VerticalAlignment.Top)
+        );
+        logObj.Transform.SetParent(_battleRoot.Transform);
 
-        // Заглушка: можно добавить надпись "Бой"
+        // Менеджер битвы
+        var battleMgr = _battleRoot.AddComponent<BattleManager>();
+        var logText = logObj.GetComponent<UIText>();
+        battleMgr.OnLogMessage += (msg) => logText.Text = msg;
+
+        // Заголовок
         var battleLabelTransform = new Transform
         {
             Anchor = new Vector2(0.5f, 0f),
@@ -149,7 +197,7 @@ public static class MySceneBuilder
         );
         battleLabel.Transform.SetParent(_battleRoot.Transform);
 
-        // Кнопка назад в меню
+        // Кнопка "В меню"
         var backTransform = new Transform
         {
             Anchor = new Vector2(0, 1),
@@ -157,21 +205,19 @@ public static class MySceneBuilder
             Size = new Vector2(150, 50),
             Origin = new Vector2(0, 1)
         };
-        var backObj = Scene.CreateGameObject("BackToMenu_Battle", backTransform,
-            new SpriteRenderer("Sprites/Panel") { Color = new Color(80, 80, 80) },
-            new UIText("Fonts/PixelFont", "В меню", Color.White, 1.2f, TextAlignment.Center),
-            new UIButton()
-        );
+        var backObj = CreateButton("BackToMenu_Battle", backTransform, "В меню", SwitchToMainMenu);
         backObj.Transform.SetParent(_battleRoot.Transform);
 
-        var backBtn = backObj.GetComponent<UIButton>();
-        var backSpr = backObj.GetComponent<SpriteRenderer>();
-        if (backBtn != null && backSpr != null)
+        // Кнопка "Протокол" (справа снизу, для теста)
+        var protocolTransform = new Transform
         {
-            backBtn.OnClick += SwitchToMainMenu;
-            backBtn.OnFocusEnter += () => backSpr.Color = new Color(120, 120, 120);
-            backBtn.OnFocusExit += () => backSpr.Color = new Color(80, 80, 80);
-        }
+            Anchor = new Vector2(1, 1),          // правый нижний угол родителя (BattleRoot)
+            Position = new Vector2(-20, -20),    // отступ по 20 пикселей от краёв
+            Size = new Vector2(150, 50),
+            Origin = new Vector2(1, 1)           // правый нижний угол самой кнопки
+        };
+        var protocolObj = CreateButton("ToProtocol_Battle", protocolTransform, "Протокол", SwitchToProtocolSetup);
+        protocolObj.Transform.SetParent(_battleRoot.Transform);
     }
 
     // ==================== Настройка протокола ====================
@@ -182,41 +228,275 @@ public static class MySceneBuilder
         _protocolSetupRoot = Scene.CreateGameObject("ProtocolSetupRoot", CreateRootTransform());
         _protocolSetupRoot.ActiveSelf = false;
 
-        // Заглушка
-        var stubTransform = new Transform
-        {
-            Anchor = new Vector2(0.5f, 0.5f),
-            Size = new Vector2(400, 100),
-            Origin = new Vector2(0.5f, 0.5f)
-        };
-        var stubObj = Scene.CreateGameObject("SetupStub", stubTransform,
-            new UIText("Fonts/PixelFont", "Настройка протокола\n(пока здесь ничего нет)", Color.Gray, 1.5f, TextAlignment.Center)
-        );
-        stubObj.Transform.SetParent(_protocolSetupRoot.Transform);
+        // Менеджер настройки
+        _protocolSetupMgr = _protocolSetupRoot.AddComponent<ProtocolSetupManager>();
 
-        // Кнопка перехода к бою (для теста)
-        var toBattleTransform = new Transform
+        // === Верхняя панель: выбор робота ===
+        var topPanel = new Transform
+        {
+            Anchor = new Vector2(0.5f, 0f),
+            Position = new Vector2(0, 20),
+            Size = new Vector2(1000, 60),
+            Origin = new Vector2(0.5f, 0f)
+        };
+        var topObj = Scene.CreateGameObject("TopPanel", topPanel);
+        topObj.Transform.SetParent(_protocolSetupRoot.Transform);
+
+        // Кнопка "<"
+        var prevBtn = CreateButton("PrevRobot", new Transform
+        {
+            Anchor = Vector2.Zero,
+            Position = new Vector2(10, 10),
+            Size = new Vector2(50, 40),
+            Origin = Vector2.Zero
+        }, "<", () =>
+        {
+            _protocolSetupMgr.PreviousRobot();
+            RefreshProtocolUI();
+        });
+        prevBtn.Transform.SetParent(topObj.Transform);
+
+        // Кнопка ">"
+        var nextBtn = CreateButton("NextRobot", new Transform
+        {
+            Anchor = new Vector2(1, 0),
+            Position = new Vector2(-100, 10),
+            Size = new Vector2(50, 40),
+            Origin = Vector2.Zero
+        }, ">", () =>
+        {
+            _protocolSetupMgr.NextRobot();
+            RefreshProtocolUI();
+        });
+        nextBtn.Transform.SetParent(topObj.Transform);
+
+        // Имя робота
+        _robotNameText = new UIText("Fonts/PixelFont", "", Color.White, 1.8f, TextAlignment.Center)
+        {
+            LayerDepth = 0f,
+            SortingLayer = 1
+        };
+        var nameObj = Scene.CreateGameObject("RobotName", new Transform
         {
             Anchor = new Vector2(0.5f, 0.5f),
-            Position = new Vector2(0, 80),
-            Size = new Vector2(200, 50),
+            Size = new Vector2(300, 40),
+            Origin = new Vector2(0.5f, 0.5f)
+        }, _robotNameText);
+        nameObj.Transform.SetParent(topObj.Transform);
+
+        // === Сетка букв ===
+        _letterButtons = new GameObject[AllLetters.Length];
+        const float startX = 100, startY = 120;
+        const float cellWidth = 70, cellHeight = 80;
+        const int columns = 11;
+
+        for (int i = 0; i < AllLetters.Length; i++)
+        {
+            int row = i / columns;
+            int col = i % columns;
+            float x = startX + col * cellWidth;
+            float y = startY + row * cellHeight;
+
+            var letter = AllLetters[i];
+            var btnGo = CreateLetterButton(letter, i, x, y);
+            btnGo.Transform.SetParent(_protocolSetupRoot.Transform);
+            _letterButtons[i] = btnGo;
+        }
+
+        // === Панель навыков (справа) ===
+        _skillListPanel = new Transform
+        {
+            Anchor = new Vector2(1, 0),
+            Position = new Vector2(-300, 120),
+            Size = new Vector2(250, 400),
+            Origin = new Vector2(0, 0)
+        };
+        var panelGo = Scene.CreateGameObject("SkillListPanel", _skillListPanel,
+            new SpriteRenderer("Sprites/Panel") { Color = new Color(30, 30, 30), SortingLayer = 2 }
+        );
+        panelGo.Transform.SetParent(_protocolSetupRoot.Transform);
+
+        // Кнопка "Удалить привязку"
+        var removeBtn = CreateButton("RemoveBinding", new Transform
+        {
+            Anchor = new Vector2(1, 0),
+            Position = new Vector2(-300, 540),
+            Size = new Vector2(250, 40),
+            Origin = new Vector2(0, 0)
+        }, "Удалить привязку", RemoveSelectedBinding);
+        removeBtn.Transform.SetParent(_protocolSetupRoot.Transform);
+
+        // Кнопка "В бой"
+        var toBattleBtn = CreateButton("ToBattle", new Transform
+        {
+            Anchor = new Vector2(1, 1),
+            Position = new Vector2(-300, -80),
+            Size = new Vector2(250, 50),
+            Origin = new Vector2(0, 1)
+        }, "В бой", SwitchToBattle);
+        toBattleBtn.Transform.SetParent(_protocolSetupRoot.Transform);
+
+        // Кнопка "В меню"
+        var toMenuBtn = CreateButton("ToMenu_Setup", new Transform
+        {
+            Anchor = new Vector2(0, 1),
+            Position = new Vector2(20, -20),
+            Size = new Vector2(150, 50),
+            Origin = new Vector2(0, 1)
+        }, "В меню", SwitchToMainMenu);
+        toMenuBtn.Transform.SetParent(_protocolSetupRoot.Transform);
+    }
+
+    private static GameObject CreateLetterButton(char letter, int index, float x, float y)
+    {
+        var transform = new Transform
+        {
+            Anchor = new Vector2(0, 0),
+            Position = new Vector2(x, y),
+            Size = new Vector2(60, 60),
             Origin = new Vector2(0.5f, 0.5f)
         };
-        var toBattleObj = Scene.CreateGameObject("ToBattleButton", toBattleTransform,
-            new SpriteRenderer("Sprites/Panel") { Color = new Color(80, 80, 80) },
-            new UIText("Fonts/PixelFont", "В бой", Color.White, 1.2f, TextAlignment.Center),
+
+        var go = Scene.CreateGameObject($"Letter_{letter}", transform,
+            new SpriteRenderer("Sprites/Panel") { Color = new Color(50, 50, 50) },
+            new UIText("Fonts/PixelFont", letter.ToString(), Color.White, 1.5f, TextAlignment.Center, VerticalAlignment.Center) { SortingLayer = 1 },
             new UIButton()
         );
-        toBattleObj.Transform.SetParent(_protocolSetupRoot.Transform);
 
-        var toBattleBtn = toBattleObj.GetComponent<UIButton>();
-        var toBattleSpr = toBattleObj.GetComponent<SpriteRenderer>();
-        if (toBattleBtn != null && toBattleSpr != null)
+        var btn = go.GetComponent<UIButton>();
+        var spr = go.GetComponent<SpriteRenderer>();
+
+        btn.OnClick += () => OnLetterClicked(index);
+
+        // Визуальный отклик
+        btn.OnFocusEnter += () => { if (_selectedLetterIndex != index) spr.Color = new Color(80, 80, 80); };
+        btn.OnFocusExit += () => { if (_selectedLetterIndex != index) spr.Color = new Color(50, 50, 50); };
+
+        return go;
+    }
+
+    private static void OnLetterClicked(int index)
+    {
+        if (_selectedLetterIndex == index)
         {
-            toBattleBtn.OnClick += SwitchToBattle;
-            toBattleBtn.OnFocusEnter += () => toBattleSpr.Color = new Color(120, 120, 120);
-            toBattleBtn.OnFocusExit += () => toBattleSpr.Color = new Color(80, 80, 80);
+            // Повторный клик – снять выделение
+            ClearLetterSelection();
+            return;
         }
+
+        // Снять выделение с предыдущей
+        ClearLetterSelection();
+
+        // Выделить новую
+        _selectedLetterIndex = index;
+        _selectedLetterButton = _letterButtons[index];
+        var spr = _selectedLetterButton.GetComponent<SpriteRenderer>();
+        if (spr != null)
+            spr.Color = new Color(100, 100, 200);
+    }
+
+    private static void ClearLetterSelection()
+    {
+        if (_selectedLetterButton != null)
+        {
+            var spr = _selectedLetterButton.GetComponent<SpriteRenderer>();
+            if (spr != null)
+                spr.Color = new Color(50, 50, 50);
+        }
+        _selectedLetterButton = null;
+        _selectedLetterIndex = -1;
+    }
+
+    private static void RemoveSelectedBinding()
+    {
+        if (_selectedLetterIndex < 0 || _selectedLetterIndex >= AllLetters.Length)
+            return;
+
+        char letter = AllLetters[_selectedLetterIndex];
+        _protocolSetupMgr.UnbindAction(letter);
+        RefreshProtocolUI();
+    }
+
+    private static void OnSkillClicked(ActionBase skill)
+    {
+        if (_selectedLetterIndex < 0 || _selectedLetterIndex >= AllLetters.Length)
+            return;
+
+        char letter = AllLetters[_selectedLetterIndex];
+        _protocolSetupMgr.BindAction(letter, skill);
+        RefreshProtocolUI();
+    }
+
+    // Утилита создания кнопки с текстом
+    private static GameObject CreateButton(string name, Transform transform, string text, System.Action onClick)
+    {
+        var go = Scene.CreateGameObject(name, transform,
+            new SpriteRenderer("Sprites/Panel") { Color = new Color(80, 80, 80) },
+            new UIText("Fonts/PixelFont", text, Color.White, 1.2f, TextAlignment.Center, VerticalAlignment.Center) { SortingLayer = 1 },
+            new UIButton()
+        );
+
+        var btn = go.GetComponent<UIButton>();
+        var spr = go.GetComponent<SpriteRenderer>();
+        btn.OnClick += onClick;
+        btn.OnFocusEnter += () => spr.Color = new Color(120, 120, 120);
+        btn.OnFocusExit += () => spr.Color = new Color(80, 80, 80);
+
+        return go;
+    }
+
+    // Обновление интерфейса настройки протокола
+    private static void RefreshProtocolUI()
+    {
+        var robot = _protocolSetupMgr?.CurrentRobot;
+        if (robot == null) return;
+
+        _robotNameText.Text = $"{robot.Name} ({robot.CurrentHealth}/{robot.MaxHealth})";
+
+        // Обновить подписи на кнопках букв: показать привязанное действие
+        for (int i = 0; i < AllLetters.Length; i++)
+        {
+            var letter = AllLetters[i];
+            var go = _letterButtons[i];
+            var uiText = go.GetComponent<UIText>();
+            var spr = go.GetComponent<SpriteRenderer>();
+
+            bool hasBinding = robot.LetterBindings.TryGetValue(letter, out var action);
+            string displayText = hasBinding ? $"{letter}\n{action.Name[0]}" : letter.ToString(); // первая буква действия
+            uiText.Text = displayText;
+
+            // Сброс цвета (кроме выделенной)
+            if (_selectedLetterIndex != i)
+                spr.Color = new Color(50, 50, 50);
+        }
+
+        // Обновить список навыков
+        ClearSkillButtons();
+        float yOffset = 10;
+        foreach (var skill in robot.SkillSlots)
+        {
+            var skillTransform = new Transform
+            {
+                Anchor = new Vector2(0, 0),
+                Position = new Vector2(10, yOffset),
+                Size = new Vector2(230, 40),
+                Origin = Vector2.Zero
+            };
+            var skillBtn = CreateButton($"Skill_{skill.Name}", skillTransform, skill.Name, () => OnSkillClicked(skill));
+            skillBtn.Transform.SetParent(_skillListPanel.GameObject.Transform);
+            _skillButtons.Add(skillBtn);
+            yOffset += 45;
+        }
+
+        // Сброс выделения буквы
+        ClearLetterSelection();
+    }
+
+    private static void ClearSkillButtons()
+    {
+        foreach (var btn in _skillButtons)
+            btn.Destroy();
+        _skillButtons.Clear();
     }
 
     // ==================== Управление режимами ====================
