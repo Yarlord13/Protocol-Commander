@@ -41,6 +41,7 @@ namespace QWERDS
             {
                 context.User = this;
                 action.Execute(context);
+                RunStatistics.RecordSkillUsed(action);
             }
         }
     }

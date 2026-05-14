@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.Xna.Framework;
 using MyGameEngine;
 using QWERDS;
+using System;
 
 public enum GameMode
 {
@@ -13,8 +14,7 @@ public enum GameMode
 
 public static class MySceneBuilder
 {
-    // Все буквы русского алфавита
-    private static readonly char[] AllLetters = "абвгдежзийклмнопрстуфхцчшщъыьэюя".ToCharArray();
+    public static readonly char[] AllLetters = "йцукенгшщзхъфывапролджэячсмитьбю".ToCharArray();
 
     private static Transform CreateRootTransform() => new Transform()
     {
@@ -26,40 +26,32 @@ public static class MySceneBuilder
         StretchTop = 0
     };
 
-    // Корневые объекты
     private static GameObject _mainMenuRoot;
     private static GameObject _battleRoot;
     private static GameObject _protocolSetupRoot;
 
-    // Менеджеры
     private static ProtocolSetupManager _protocolSetupMgr;
-
-    // UI настройки протокола
-    private static UIText _robotNameText;
-    private static GameObject[] _letterButtons; // по индексу буквы в AllLetters
+    private static GameObject[] _letterButtons;
     private static GameObject _selectedLetterButton;
-    private static int _selectedLetterIndex = -1; // -1 = нет выбора
+    private static int _selectedLetterIndex = -1;
     private static Transform _skillListPanel;
     private static readonly List<GameObject> _skillButtons = new List<GameObject>();
 
     public static GameMode CurrentMode { get; private set; } = GameMode.None;
+
     public static void Build()
     {
         Scene.Initialize();
-
-        // Инициализация глобального состояния
         GameState.Reset();
-        // Три робота с начальными навыками
-        GameState.Robots.Add(new Robot("Альфа"));
-        GameState.Robots.Add(new Robot("Браво"));
-        GameState.Robots.Add(new Robot("Чарли"));
-        // Начальные привязки (пример)
-        GameState.Robots[0].SkillSlots.Add(new AttackAction());
-        GameState.Robots[0].SkillSlots.Add(new HealAction());
-        GameState.Robots[0].LetterBindings['а'] = GameState.Robots[0].SkillSlots[0];
-        GameState.Robots[0].LetterBindings['л'] = GameState.Robots[0].SkillSlots[1];
-
+        RunStatistics.Reset();
+        DifficultyManager.Reset();
         WordValidator.Initialize();
+
+        // Создаём одного робота (Героя)
+        var hero = new Robot("Герой", 120);
+        hero.SkillSlots.Add(new AttackAction());
+        hero.SkillSlots.Add(new HealAction());
+        GameState.Robots.Add(hero);
 
         CreateMainMenu();
         CreateBattleMode();
@@ -72,7 +64,6 @@ public static class MySceneBuilder
     private static void CreateMainMenu()
     {
         if (_mainMenuRoot != null) return;
-
         _mainMenuRoot = Scene.CreateGameObject("MainMenuRoot", CreateRootTransform());
         _mainMenuRoot.ActiveSelf = false;
 
@@ -111,11 +102,10 @@ public static class MySceneBuilder
             );
             btnObj.Transform.SetParent(_mainMenuRoot.Transform);
 
-            // Настройка действий для кнопки "Играть"
             if (buttonTexts[i] == "Играть")
             {
                 var btn = btnObj.GetComponent<UIButton>();
-                btn.OnClick += () => SwitchToBattle(); // Пока сразу в бой (позже можно настройку)
+                btn.OnClick += () => SwitchToProtocolSetup();
             }
             else if (buttonTexts[i] == "Выход")
             {
@@ -123,7 +113,6 @@ public static class MySceneBuilder
                 btn.OnClick += () => Game1.InstanceGame?.Exit();
             }
 
-            // Визуальный отклик
             var spr = btnObj.GetComponent<SpriteRenderer>();
             var uiBtn = btnObj.GetComponent<UIButton>();
             if (spr != null && uiBtn != null)
@@ -134,24 +123,25 @@ public static class MySceneBuilder
         }
     }
 
-    // ==================== Режим битвы (небольшие дополнения) ====================
+    // ==================== Режим битвы ====================
     private static void CreateBattleMode()
     {
         if (_battleRoot != null) return;
 
+        // Корень боя – растянут на всю левую половину (оставим место для правой панели)
         var battleRootTransform = new Transform()
         {
             SizeModeX = SizeMode.Stretch,
             SizeModeY = SizeMode.Stretch,
-            StretchBottom = 0,
             StretchLeft = 0,
-            StretchRight = 960,
-            StretchTop = 0
+            StretchRight = 600,  // резервируем 600 пикселей справа под панель информации
+            StretchTop = 0,
+            StretchBottom = 0
         };
         _battleRoot = Scene.CreateGameObject("BattleRoot", battleRootTransform);
         _battleRoot.ActiveSelf = false;
 
-        // Поле ввода (как раньше)
+        // Поле ввода
         var inputTransform = new Transform
         {
             Anchor = new Vector2(0.5f, 0.5f),
@@ -166,7 +156,7 @@ public static class MySceneBuilder
         );
         inputObj.Transform.SetParent(_battleRoot.Transform);
 
-        // Лог битвы
+        // Лог битвы (левая верхняя область)
         var logTransform = new Transform
         {
             Anchor = new Vector2(0, 0),
@@ -208,16 +198,23 @@ public static class MySceneBuilder
         var backObj = CreateButton("BackToMenu_Battle", backTransform, "В меню", SwitchToMainMenu);
         backObj.Transform.SetParent(_battleRoot.Transform);
 
-        // Кнопка "Протокол" (справа снизу, для теста)
-        var protocolTransform = new Transform
+        // Правая панель информации о бое
+        var infoPanelTransform = new Transform
         {
-            Anchor = new Vector2(1, 1),          // правый нижний угол родителя (BattleRoot)
-            Position = new Vector2(-20, -20),    // отступ по 20 пикселей от краёв
-            Size = new Vector2(150, 50),
-            Origin = new Vector2(1, 1)           // правый нижний угол самой кнопки
+            SizeModeY = SizeMode.Stretch,
+            StretchTop = 10,
+            StretchBottom = 10,
+            Anchor = new Vector2(1, 0),  // привязана к правому краю BattleRoot
+            Position = new Vector2(-10, 10),
+            Size = new Vector2(580, 0),
+            Origin = new Vector2(1, 0)   // правый верхний угол панели
         };
-        var protocolObj = CreateButton("ToProtocol_Battle", protocolTransform, "Протокол", SwitchToProtocolSetup);
-        protocolObj.Transform.SetParent(_battleRoot.Transform);
+        var infoPanel = Scene.CreateGameObject("BattleInfoPanel", infoPanelTransform
+            //new SpriteRenderer("Sprites/Panel") { Color = new Color(20, 20, 40) }
+        );
+        infoPanel.Transform.SetParent(_battleRoot.Transform);
+        // Добавляем компонент отображения информации (пока без UI вывода, только сбор данных)
+        infoPanel.AddComponent<BattleInfoDisplay>();
     }
 
     // ==================== Настройка протокола ====================
@@ -228,10 +225,10 @@ public static class MySceneBuilder
         _protocolSetupRoot = Scene.CreateGameObject("ProtocolSetupRoot", CreateRootTransform());
         _protocolSetupRoot.ActiveSelf = false;
 
-        // Менеджер настройки
         _protocolSetupMgr = _protocolSetupRoot.AddComponent<ProtocolSetupManager>();
+        //_protocolSetupMgr.OnDataChanged += RefreshProtocolUI;
 
-        // === Верхняя панель: выбор робота ===
+        // === Верхняя панель: имя робота ===
         var topPanel = new Transform
         {
             Anchor = new Vector2(0.5f, 0f),
@@ -242,49 +239,26 @@ public static class MySceneBuilder
         var topObj = Scene.CreateGameObject("TopPanel", topPanel);
         topObj.Transform.SetParent(_protocolSetupRoot.Transform);
 
-        // Кнопка "<"
-        var prevBtn = CreateButton("PrevRobot", new Transform
-        {
-            Anchor = Vector2.Zero,
-            Position = new Vector2(10, 10),
-            Size = new Vector2(50, 40),
-            Origin = Vector2.Zero
-        }, "<", () =>
-        {
-            _protocolSetupMgr.PreviousRobot();
-            RefreshProtocolUI();
-        });
-        prevBtn.Transform.SetParent(topObj.Transform);
-
-        // Кнопка ">"
-        var nextBtn = CreateButton("NextRobot", new Transform
-        {
-            Anchor = new Vector2(1, 0),
-            Position = new Vector2(-100, 10),
-            Size = new Vector2(50, 40),
-            Origin = Vector2.Zero
-        }, ">", () =>
-        {
-            _protocolSetupMgr.NextRobot();
-            RefreshProtocolUI();
-        });
-        nextBtn.Transform.SetParent(topObj.Transform);
-
         // Имя робота
-        _robotNameText = new UIText("Fonts/PixelFont", "", Color.White, 1.8f, TextAlignment.Center)
-        {
-            LayerDepth = 0f,
-            SortingLayer = 1
-        };
+        var robotNameText = new UIText("Fonts/PixelFont", "", Color.White, 1.8f, TextAlignment.Center);
         var nameObj = Scene.CreateGameObject("RobotName", new Transform
         {
             Anchor = new Vector2(0.5f, 0.5f),
-            Size = new Vector2(300, 40),
+            Size = new Vector2(400, 40),
             Origin = new Vector2(0.5f, 0.5f)
-        }, _robotNameText);
+        }, robotNameText);
         nameObj.Transform.SetParent(topObj.Transform);
+        // Сохраняем ссылку для обновления в RefreshProtocolUI
+        // Для простоты будем обновлять через глобальную переменную, но лучше через поле класса.
+        // Добавим статическое поле:
+        _robotNameText = robotNameText;  // нужно добавить статическое поле private static UIText _robotNameText;
 
         // === Сетка букв ===
+        var keyboardHandlerGo = Scene.CreateGameObject("ProtocolKeyboardHandler");
+        keyboardHandlerGo.Transform.SetParent(_protocolSetupRoot.Transform);
+        var handler = keyboardHandlerGo.AddComponent<ProtocolKeyboardHandler>();
+        ProtocolKeyboardHandler.LetterButtons = _letterButtons;
+
         _letterButtons = new GameObject[AllLetters.Length];
         const float startX = 100, startY = 120;
         const float cellWidth = 70, cellHeight = 80;
@@ -345,7 +319,13 @@ public static class MySceneBuilder
             Origin = new Vector2(0, 1)
         }, "В меню", SwitchToMainMenu);
         toMenuBtn.Transform.SetParent(_protocolSetupRoot.Transform);
+
+        // Первое обновление UI
+        RefreshProtocolUI();
     }
+
+    // Вспомогательные методы (CreateLetterButton, OnLetterClicked, ClearLetterSelection, RemoveSelectedBinding, OnSkillClicked, CreateButton, RefreshProtocolUI, ClearSkillButtons, SetActiveRoot, SwitchToMainMenu, SwitchToBattle, SwitchToProtocolSetup) остаются те же, но с исправлениями.
+    // Привожу их изменённые версии:
 
     private static GameObject CreateLetterButton(char letter, int index, float x, float y)
     {
@@ -368,26 +348,21 @@ public static class MySceneBuilder
 
         btn.OnClick += () => OnLetterClicked(index);
 
-        // Визуальный отклик
         btn.OnFocusEnter += () => { if (_selectedLetterIndex != index) spr.Color = new Color(80, 80, 80); };
         btn.OnFocusExit += () => { if (_selectedLetterIndex != index) spr.Color = new Color(50, 50, 50); };
 
         return go;
     }
 
-    private static void OnLetterClicked(int index)
+    public static void OnLetterClicked(int index)
     {
         if (_selectedLetterIndex == index)
         {
-            // Повторный клик – снять выделение
             ClearLetterSelection();
             return;
         }
 
-        // Снять выделение с предыдущей
         ClearLetterSelection();
-
-        // Выделить новую
         _selectedLetterIndex = index;
         _selectedLetterButton = _letterButtons[index];
         var spr = _selectedLetterButton.GetComponent<SpriteRenderer>();
@@ -409,9 +384,7 @@ public static class MySceneBuilder
 
     private static void RemoveSelectedBinding()
     {
-        if (_selectedLetterIndex < 0 || _selectedLetterIndex >= AllLetters.Length)
-            return;
-
+        if (_selectedLetterIndex < 0 || _selectedLetterIndex >= AllLetters.Length) return;
         char letter = AllLetters[_selectedLetterIndex];
         _protocolSetupMgr.UnbindAction(letter);
         RefreshProtocolUI();
@@ -419,15 +392,12 @@ public static class MySceneBuilder
 
     private static void OnSkillClicked(ActionBase skill)
     {
-        if (_selectedLetterIndex < 0 || _selectedLetterIndex >= AllLetters.Length)
-            return;
-
+        if (_selectedLetterIndex < 0) return;
         char letter = AllLetters[_selectedLetterIndex];
         _protocolSetupMgr.BindAction(letter, skill);
         RefreshProtocolUI();
     }
 
-    // Утилита создания кнопки с текстом
     private static GameObject CreateButton(string name, Transform transform, string text, System.Action onClick)
     {
         var go = Scene.CreateGameObject(name, transform,
@@ -445,7 +415,6 @@ public static class MySceneBuilder
         return go;
     }
 
-    // Обновление интерфейса настройки протокола
     private static void RefreshProtocolUI()
     {
         var robot = _protocolSetupMgr?.CurrentRobot;
@@ -453,7 +422,7 @@ public static class MySceneBuilder
 
         _robotNameText.Text = $"{robot.Name} ({robot.CurrentHealth}/{robot.MaxHealth})";
 
-        // Обновить подписи на кнопках букв: показать привязанное действие
+        // Обновляем подписи на кнопках букв
         for (int i = 0; i < AllLetters.Length; i++)
         {
             var letter = AllLetters[i];
@@ -462,33 +431,49 @@ public static class MySceneBuilder
             var spr = go.GetComponent<SpriteRenderer>();
 
             bool hasBinding = robot.LetterBindings.TryGetValue(letter, out var action);
-            string displayText = hasBinding ? $"{letter}\n{action.Name[0]}" : letter.ToString(); // первая буква действия
+            float powerMod = _protocolSetupMgr.GetSkillPowerForLetter(letter);
+            string displayText = hasBinding ? $"{letter}\n{action.Name}\nx{powerMod:F1}" : letter.ToString();
             uiText.Text = displayText;
 
-            // Сброс цвета (кроме выделенной)
             if (_selectedLetterIndex != i)
                 spr.Color = new Color(50, 50, 50);
         }
 
-        // Обновить список навыков
+        // Обновляем список навыков
         ClearSkillButtons();
+        var skills = _protocolSetupMgr.GetAvailableSkills();
         float yOffset = 10;
-        foreach (var skill in robot.SkillSlots)
+        foreach (var skill in skills)
         {
             var skillTransform = new Transform
             {
                 Anchor = new Vector2(0, 0),
                 Position = new Vector2(10, yOffset),
-                Size = new Vector2(230, 40),
+                Size = new Vector2(300, 40),
                 Origin = Vector2.Zero
             };
-            var skillBtn = CreateButton($"Skill_{skill.Name}", skillTransform, skill.Name, () => OnSkillClicked(skill));
+            var skillBtn = Scene.CreateGameObject($"Skill_{skill.Name}", skillTransform);
+            // Текст без описания
+            var text = skillBtn.AddComponent<UIText>();
+            text.FontPath = "Fonts/PixelFont";
+            text.Text = skill.Name;
+            text.Color = Color.White;
+            text.Scale = 1.2f;
+            text.Alignment = TextAlignment.Center;
+            text.VerticalAlignment = VerticalAlignment.Center;
+            text.SortingLayer = 5;
+            
+            var button = skillBtn.AddComponent<UIButton>();
+            var capturedSkill = skill; // для замыкания
+            button.OnClick += () => OnSkillClicked(capturedSkill);
+            button.OnFocusEnter += () => text.Color = Color.Yellow;
+            button.OnFocusExit += () => text.Color = Color.White;
+            
             skillBtn.Transform.SetParent(_skillListPanel.GameObject.Transform);
             _skillButtons.Add(skillBtn);
             yOffset += 45;
         }
-
-        // Сброс выделения буквы
+        
         ClearLetterSelection();
     }
 
@@ -499,7 +484,16 @@ public static class MySceneBuilder
         _skillButtons.Clear();
     }
 
-    // ==================== Управление режимами ====================
+    private static void SetActiveRoot(GameObject activeRoot)
+    {
+        if (_mainMenuRoot != null) _mainMenuRoot.ActiveSelf = false;
+        if (_battleRoot != null) _battleRoot.ActiveSelf = false;
+        if (_protocolSetupRoot != null) _protocolSetupRoot.ActiveSelf = false;
+
+        if (activeRoot != null)
+            activeRoot.ActiveSelf = true;
+    }
+
     public static void SwitchToMainMenu()
     {
         SetActiveRoot(_mainMenuRoot);
@@ -508,7 +502,6 @@ public static class MySceneBuilder
 
     public static void SwitchToBattle()
     {
-        // Очистка поля ввода при входе в режим
         if (_battleRoot != null)
         {
             var inputField = _battleRoot.GetComponentInChildren<UIInputField>();
@@ -520,19 +513,14 @@ public static class MySceneBuilder
 
     public static void SwitchToProtocolSetup()
     {
+        // Обновляем список доступных навыков при входе
+        _protocolSetupMgr.StartNewSession();
+        _protocolSetupMgr?.RefreshAvailableSkills();
+        RefreshProtocolUI();
         SetActiveRoot(_protocolSetupRoot);
         CurrentMode = GameMode.ProtocolSetup;
     }
 
-    private static void SetActiveRoot(GameObject activeRoot)
-    {
-        // Деактивируем все корневые объекты
-        if (_mainMenuRoot != null) _mainMenuRoot.ActiveSelf = false;
-        if (_battleRoot != null) _battleRoot.ActiveSelf = false;
-        if (_protocolSetupRoot != null) _protocolSetupRoot.ActiveSelf = false;
-
-        // Активируем нужный
-        if (activeRoot != null)
-            activeRoot.ActiveSelf = true;
-    }
+    // Добавляем недостающее статическое поле
+    private static UIText _robotNameText;
 }

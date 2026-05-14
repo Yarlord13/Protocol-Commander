@@ -188,7 +188,9 @@ namespace MyGameEngine
         {
             if (!ActiveInHierarchy)
                 return;
-            foreach (var comp in _components)
+            // Создаём копию, чтобы избежать ошибок модификации коллекции во время итерации
+            var componentsCopy = _components.ToArray();
+            foreach (var comp in componentsCopy)
                 if (comp.Enabled)
                     comp.Update(gameTime);
         }

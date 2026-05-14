@@ -12,49 +12,27 @@ namespace QWERDS
         public List<Robot> Robots { get; private set; } = new List<Robot>();
         public List<Enemy> Enemies { get; private set; } = new List<Enemy>();
 
-        /// <summary>Событие для UI: новое сообщение в лог.</summary>
         public event Action<string> OnLogMessage;
-        /// <summary>Событие: слово принято и начинается обработка.</summary>
         public event Action<string> OnWordAccepted;
-        /// <summary>Событие: битва завершена (победа/поражение).</summary>
         public event Action<bool> OnBattleEnd;
 
         private readonly Queue<string> logBuffer = new Queue<string>();
-
-        // Ссылки на UI компоненты (передаются при построении сцены)
         private UIInputField inputField;
-        private UIText logDisplay;
+        private DateTime _wordStartTime; // для замера времени хода
 
         public override void Start()
         {
-            // Находим компоненты в иерархии
             inputField = Transform.GameObject?.GetComponentInChildren<UIInputField>();
-            // Подписка на ввод слова
             if (inputField != null)
                 inputField.OnSubmit += OnWordSubmitted;
 
-            // Инициализация боя (происходит один раз при активации корня)
             InitializeBattle();
         }
 
         private void InitializeBattle()
         {
-            // Роботы берутся из глобального состояния (созданы в начале игры)
             Robots = GameState.Robots.ToList();
-            // Генерация врагов (1-4)
-            Enemies.Clear();
-            int count = new Random().Next(1, 5);
-            for (int i = 1; i <= count; i++)
-            {
-                var enemy = new Enemy($"Враг {i}", 50 + i * 10);
-                // Назначаем случайные действия на все буквы, которыми пользуются роботы
-                var usedLetters = Robots.SelectMany(r => r.LetterBindings.Keys).Distinct();
-                foreach (char c in usedLetters)
-                {
-                    enemy.Actions[c] = new EnemyAction { Damage = 5 + i * 2, Description = "атакует" };
-                }
-                Enemies.Add(enemy);
-            }
+            Enemies = DifficultyManager.GenerateEnemies();
             logBuffer.Clear();
             LogMessage("Бой начался!");
         }
@@ -63,17 +41,17 @@ namespace QWERDS
         {
             if (string.IsNullOrEmpty(word)) return;
 
-            // 1. Проверка на реальность слова
+            // Замер времени
+            float turnTime = (float)(DateTime.Now - _wordStartTime).TotalSeconds;
+            RunStatistics.RecordTurnTime(turnTime);
+            RunStatistics.RecordWordUsed(word);
+
             if (!WordValidator.IsRealWord(word))
             {
                 LogMessage($"Слово \"{word}\" не распознано протоколом.");
                 return;
             }
 
-            // 2. Проверка уникальности (будет дополнена позже)
-            // if (GameState.UsedWords.Contains(word.ToLower())) ...
-
-            // 3. Проверка спецэффектов
             string specialEffect = WordValidator.GetSpecialEffect(word);
             if (specialEffect != null)
             {
@@ -84,16 +62,20 @@ namespace QWERDS
             OnWordAccepted?.Invoke(word);
             ExecuteWord(word);
 
-            // Очищаем поле после успешной отправки
+            // Очищаем поле после отправки
             inputField?.Clear();
+            // Запускаем таймер для следующего слова (здесь не реализован, но можно добавить)
+            _wordStartTime = DateTime.Now;
         }
 
-        /// <summary>Главный метод выполнения слова.</summary>
         private void ExecuteWord(string word)
         {
             var context = new BattleContext { Battle = this };
             foreach (char letter in word.ToLowerInvariant())
             {
+                // Регистрируем использование буквы в статистике
+                RunStatistics.RecordLetterUsed(letter);
+
                 // Фаза роботов
                 foreach (var robot in Robots.Where(r => r.IsAlive))
                 {
@@ -106,7 +88,6 @@ namespace QWERDS
                 }
             }
 
-            // После всех букв – проверка конца
             CheckEndCondition();
         }
 
@@ -115,6 +96,10 @@ namespace QWERDS
             if (Enemies.All(e => !e.IsAlive))
             {
                 LogMessage("Все враги уничтожены - ПОБЕДА!");
+                foreach (var enemy in Enemies.Where(e => !e.IsAlive))
+                    RunStatistics.RecordEnemyDefeated(enemy.Name);
+                RunStatistics.RecordBattleFinished();
+                DifficultyManager.AdvanceBattle();
                 OnBattleEnd?.Invoke(true);
                 Cleanup();
                 return true;
@@ -131,7 +116,6 @@ namespace QWERDS
 
         private void Cleanup()
         {
-            // Отписка от событий
             if (inputField != null)
                 inputField.OnSubmit -= OnWordSubmitted;
             inputField = null;
