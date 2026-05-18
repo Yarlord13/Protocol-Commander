@@ -7,7 +7,7 @@ using System;
 
 namespace QWERDS
 {
-    public class Game1 : Core
+    public class Game1 : MyCore
     {
         public static Game1 InstanceGame { get; private set; }
         private int _windowedWidth = 1280;
@@ -24,7 +24,6 @@ namespace QWERDS
             Window.AllowUserResizing = true;
             Window.ClientSizeChanged += OnWindowResized;
 
-            // Подписка на системный ввод символов (раскладка учитывается автоматически)
             Window.TextInput += (s, args) => InputManager.FeedTextInput(args.Character);
 
             Graphics.ApplyChanges();
@@ -41,7 +40,6 @@ namespace QWERDS
             }
 
             ResolutionManager.Initialize(GraphicsDevice);
-            // Обновляем вьюпорт
             GraphicsDevice.Viewport = new Viewport(0, 0, Window.ClientBounds.Width, Window.ClientBounds.Height);
         }
 
@@ -90,15 +88,16 @@ namespace QWERDS
 
         protected override void Update(GameTime gameTime)
         {
-            // Обновляем состояния ввода один раз за кадр
             InputManager.Update();
 
-            // Выход по Escape
-            if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed ||
-                InputManager.IsKeyPressed(Keys.Escape))
-                Exit();
+            // Escape открывает/закрывает меню паузы (только если не в главном меню)
+            if (InputManager.IsKeyPressed(Keys.Escape))
+            {
+                System.Diagnostics.Debug.WriteLine("ESC pressed, calling TogglePauseMenu");
+                MySceneBuilder.TogglePauseMenu();
+            }
 
-            // Переключение полноэкранного режима по F11 (однократное нажатие)
+            // Переключение полноэкранного режима по F11
             if (InputManager.IsKeyPressed(Keys.F11))
             {
                 ToggleFullScreen();

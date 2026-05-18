@@ -7,19 +7,19 @@ namespace QWERDS
     public class ProtocolKeyboardHandler : Behaviour
     {
         public static GameObject[] LetterButtons;
-        private int _pendingLetterIndex = -1;
 
         public override void Update(GameTime gameTime)
         {
             if (!Enabled) return;
+            if (LetterButtons == null) return;
+
             char c;
-            while (InputManager.TryGetTextInput(out c)) // обрабатываем все символы, накопившиеся за кадр
+            while (InputManager.TryGetTextInput(out c))
             {
                 c = char.ToLowerInvariant(c);
                 int index = Array.IndexOf(MySceneBuilder.AllLetters, c);
-                if (index >= 0 && LetterButtons != null && index < LetterButtons.Length)
+                if (index >= 0 && index < LetterButtons.Length)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Keyboard char: {c}, index {index}");
                     MySceneBuilder.OnLetterClicked(index);
                 }
             }

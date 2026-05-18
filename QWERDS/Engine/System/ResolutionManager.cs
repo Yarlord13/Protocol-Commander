@@ -5,85 +5,90 @@ using System;
 namespace MyGameEngine
 {
     /// <summary>
-    /// Управляет преобразованием координат из эталонного разрешения (1920x1080) в фактическое разрешение экрана.
-    /// Позволяет корректно отображать игру на любых мониторах с сохранением пропорций и центрированием.
+    /// Управляет масштабированием эталонного разрешения (1920x1080) на реальное окно.
+    /// Обеспечивает вписывание игрового поля с сохранением пропорций (letterboxing/pillarboxing).
     /// </summary>
     public static class ResolutionManager
     {
+        /// <summary>Эталонная ширина игрового поля.</summary>
         public const float ReferenceWidth = 1920f;
+        
+        /// <summary>Эталонная высота игрового поля.</summary>
         public const float ReferenceHeight = 1080f;
 
+        /// <summary>Текущая ширина окна в физических пикселях.</summary>
         public static float ActualWidth { get; private set; }
+        
+        /// <summary>Текущая высота окна в физических пикселях.</summary>
         public static float ActualHeight { get; private set; }
         
-        /// <summary>
-        /// Масштабный коэффициент, сохраняющий пропорции эталонного разрешения.
-        /// Все координаты умножаются на этот коэффициент.
-        /// </summary>
+        /// <summary>Единый коэффициент масштабирования для вписывания эталонного разрешения.</summary>
         public static float Scale { get; private set; }
+        
+        /// <summary>Смещение отрисовки для центрирования игрового поля на экране.</summary>
+        public static Vector2 Offset { get; private set; }
 
         /// <summary>
-        /// Смещение в пикселях для центрирования игровой области на экране.
+        /// Эффективный размер видимой области в эталонных единицах.
+        /// Равен (ActualWidth / Scale, ActualHeight / Scale). 
+        /// При изменении соотношения сторон одна из координат увеличивается, 
+        /// что позволяет UI растягиваться на всю видимую область экрана.
         /// </summary>
-        public static Vector2 Offset { get; private set; }
+        public static Vector2 EffectiveReferenceSize { get; private set; }
 
         private static bool _initialized = false;
 
+        /// <summary>Инициализирует менеджер на основе текущего состояния графического устройства.</summary>
+        /// <param name="graphicsDevice">Активный GraphicsDevice.</param>
         public static void Initialize(GraphicsDevice graphicsDevice)
         {
             if (graphicsDevice == null)
-                throw new ArgumentNullException(nameof(graphicsDevice), "GraphicsDevice не может быть null.");
+                throw new ArgumentNullException(nameof(graphicsDevice));
 
             ActualWidth = graphicsDevice.Viewport.Width;
             ActualHeight = graphicsDevice.Viewport.Height;
 
             if (ActualWidth <= 0 || ActualHeight <= 0)
-                throw new InvalidOperationException("Некорректные размеры экрана.");
+                throw new InvalidOperationException("Invalid screen dimensions.");
 
-            // Масштаб как минимальное отношение, чтобы вписать эталон в экран без обрезания
             float scaleX = ActualWidth / ReferenceWidth;
             float scaleY = ActualHeight / ReferenceHeight;
             Scale = Math.Min(scaleX, scaleY);
 
-            // Смещение для центрирования итогового прямоугольника
             float scaledWidth = ReferenceWidth * Scale;
             float scaledHeight = ReferenceHeight * Scale;
+            
             Offset = new Vector2(
                 (ActualWidth - scaledWidth) / 2f,
                 (ActualHeight - scaledHeight) / 2f
             );
 
+            // Эффективный размер = фактический размер окна, делённый на масштаб.
+            // Представляет собой видимую область в эталонных координатах.
+            EffectiveReferenceSize = new Vector2(ActualWidth / Scale, ActualHeight / Scale);
+
             _initialized = true;
         }
 
-        /// <summary>
-        /// Преобразует эталонные координаты в экранные с учётом масштаба и центрирования.
-        /// </summary>
+        /// <summary>Преобразует эталонные координаты в экранные пиксели.</summary>
         public static Vector2 ToScreen(Vector2 referencePosition)
         {
-            if (!_initialized)
-                throw new InvalidOperationException("ResolutionManager не инициализирован. Вызовите Initialize() перед использованием.");
-            return referencePosition * Scale + Offset;
+            if (!_initialized) throw new InvalidOperationException("ResolutionManager not initialized.");
+            return referencePosition * Scale;
         }
 
-        /// <summary>
-        /// Преобразует эталонный размер в экранный (смещение не применяется).
-        /// </summary>
+        /// <summary>Преобразует эталонный размер в экранные пиксели.</summary>
         public static Vector2 ToScreenSize(Vector2 referenceSize)
         {
-            if (!_initialized)
-                throw new InvalidOperationException("ResolutionManager не инициализирован. Вызовите Initialize() перед использованием.");
+            if (!_initialized) throw new InvalidOperationException("ResolutionManager not initialized.");
             return referenceSize * Scale;
         }
 
-        /// <summary>
-        /// Преобразует экранные координаты мыши в эталонные.
-        /// </summary>
+        /// <summary>Преобразует экранные координаты мыши в эталонные (с учётом letterboxing).</summary>
         public static Vector2 ToReference(Vector2 screenPosition)
         {
-            if (!_initialized)
-                throw new InvalidOperationException("ResolutionManager не инициализирован. Вызовите Initialize() перед использованием.");
-            return (screenPosition - Offset) / Scale;
+            if (!_initialized) throw new InvalidOperationException("ResolutionManager not initialized.");
+            return screenPosition / Scale;
         }
     }
 }

@@ -19,6 +19,7 @@ namespace QWERDS
         private readonly Queue<string> logBuffer = new Queue<string>();
         private UIInputField inputField;
         private DateTime _wordStartTime; // для замера времени хода
+        private VictoryDelayHandler _victoryHandler;
 
         public override void Start()
         {
@@ -26,7 +27,21 @@ namespace QWERDS
             if (inputField != null)
                 inputField.OnSubmit += OnWordSubmitted;
 
+            _victoryHandler = GameObject.GetComponent<VictoryDelayHandler>();
+            if (_victoryHandler == null)
+                _victoryHandler = GameObject.AddComponent<VictoryDelayHandler>();
+
             InitializeBattle();
+        }
+
+        /// <summary>Переинициализирует бой (вызывается при возврате из протокола).</summary>
+        public void RestartBattle()
+        {
+            Robots = GameState.Robots.ToList();
+            Enemies = DifficultyManager.GenerateEnemies();
+            logBuffer.Clear();
+            LogMessage("Бой начался!");
+            _wordStartTime = DateTime.Now;
         }
 
         private void InitializeBattle()
@@ -35,6 +50,7 @@ namespace QWERDS
             Enemies = DifficultyManager.GenerateEnemies();
             logBuffer.Clear();
             LogMessage("Бой начался!");
+            _wordStartTime = DateTime.Now;
         }
 
         private void OnWordSubmitted(string word)
@@ -102,6 +118,7 @@ namespace QWERDS
                 DifficultyManager.AdvanceBattle();
                 OnBattleEnd?.Invoke(true);
                 Cleanup();
+                _victoryHandler.StartVictoryDelay(); // переключит на настройку через 2 сек
                 return true;
             }
             if (Robots.All(r => !r.IsAlive))

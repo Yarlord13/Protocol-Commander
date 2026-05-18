@@ -10,9 +10,19 @@ namespace MyGameEngine
     {
         /// <summary>Путь к текстуре относительно папки Content (без расширения).</summary>
         public string TexturePath { get; set; }
+        private Texture2D _texture;
 
         /// <summary>Загруженная текстура (заполняется автоматически в Scene.LoadContent).</summary>
-        public Texture2D Texture { get; internal set; }
+        public Texture2D Texture
+        {
+            get
+            {
+                if (_texture == null && !string.IsNullOrEmpty(TexturePath) && Scene.Content != null)
+                    _texture = Scene.Content.Load<Texture2D>(TexturePath);
+                return _texture;
+            }
+            internal set => _texture = value;
+        }
 
         /// <summary>Цветовой оттенок спрайта.</summary>
         public Color Color { get; set; } = Color.White;
@@ -39,7 +49,7 @@ namespace MyGameEngine
 
         public void Draw(SpriteBatch spriteBatch)
         {
-            if (Texture == null)
+            if (_texture == null)
             {
                 System.Diagnostics.Debug.WriteLine($"[ERROR] {GameObject?.Name}: Texture is NULL, path={TexturePath}");
                 return;
@@ -56,12 +66,12 @@ namespace MyGameEngine
             );
 
             Vector2 originInTexture = new Vector2(
-                Transform.Origin.X * Texture.Width,
-                Transform.Origin.Y * Texture.Height
+                Transform.Origin.X * _texture.Width,
+                Transform.Origin.Y * _texture.Height
             );
 
             spriteBatch.Draw(
-                Texture,
+                _texture,
                 destinationRect,
                 SourceRectangle,
                 Color,

@@ -12,7 +12,16 @@ namespace MyGameEngine
         private SpriteFont _font;
 
         public string FontPath { get; set; }
-        public SpriteFont Font { get => _font; internal set => _font = value; }
+        public SpriteFont Font
+        {
+            get
+            {
+                if (_font == null && !string.IsNullOrEmpty(FontPath) && Scene.Content != null)
+                    _font = Scene.Content.Load<SpriteFont>(FontPath);
+                return _font;
+            }
+            internal set => _font = value;
+        }
         public string Text { get => _text; set => _text = value ?? string.Empty; }
         public Color Color { get; set; } = Color.White;
         public TextAlignment Alignment { get; set; } = TextAlignment.Left;

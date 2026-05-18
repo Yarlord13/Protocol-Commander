@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using System;
 using System.Collections.Generic;
 
 namespace MyGameEngine
@@ -16,36 +17,33 @@ namespace MyGameEngine
 
     /// <summary>
     /// Компонент, задающий пространственные свойства объекта.
-    /// Поддерживает иерархию (родительские Transform'ы), привязку (Anchor) и два режима размера:
-    /// фиксированный или растянутый с отступами. Аналог RectTransform в Unity.
-    /// Все координаты задаются в эталонных единицах (1920x1080) и автоматически масштабируются.
+    /// Поддерживает иерархию, привязку (Anchor) и два режима размера: фиксированный или растянутый.
+    /// Аналог RectTransform в Unity. Все координаты задаются в эталонных единицах (1920x1080) 
+    /// и автоматически масштабируются через ResolutionManager.
     /// </summary>
     public class Transform : Behaviour
     {
-        private Vector2 _position;          // смещение от точки привязки (в эталонных единицах)
+        private Vector2 _position;
         private float _rotation;
-        private Vector2 _size = new Vector2(100, 100); // используется только при Fixed
-        private Vector2 _origin = Vector2.Zero;        // точка поворота/привязки внутри объекта (0..1 относительно его размера)
-        private Vector2 _anchor = Vector2.Zero;        // точка привязки к родителю (0..1, где 0,0 – левый верхний угол родительского прямоугольника)
+        private Vector2 _size = new Vector2(100, 100);
+        private Vector2 _origin = Vector2.Zero;
+        private Vector2 _anchor = Vector2.Zero;
 
         private Transform _parent;
         private readonly List<Transform> _children = new List<Transform>();
 
-        // === Новые поля для режима растяжения ===
         private SizeMode _sizeModeX = SizeMode.Fixed;
         private SizeMode _sizeModeY = SizeMode.Fixed;
 
-        private float _stretchLeft;    // отступ слева (эталонные пиксели) при Stretch по X
-        private float _stretchRight;   // отступ справа
-        private float _stretchTop;     // отступ сверху
-        private float _stretchBottom;  // отступ снизу
+        private float _stretchLeft;
+        private float _stretchRight;
+        private float _stretchTop;
+        private float _stretchBottom;
 
         // ========== Свойства позиции и привязки ==========
 
         /// <summary>
         /// Эталонное смещение от точки привязки <see cref="Anchor"/>.
-        /// Например, если Anchor = (0,0) (левый верхний угол родителя),
-        /// то Position = (100, 50) означает 100 пикселей вправо и 50 вниз от левого верхнего угла родителя.
         /// </summary>
         public Vector2 Position
         {
@@ -76,7 +74,6 @@ namespace MyGameEngine
 
         /// <summary>
         /// Точка поворота/привязки внутри объекта в нормализованных координатах (0..1) относительно его размера.
-        /// (0,0) – левый верхний угол, (1,1) – правый нижний.
         /// </summary>
         public Vector2 Origin
         {
@@ -91,7 +88,7 @@ namespace MyGameEngine
         // ========== Свойства размера ==========
 
         /// <summary>
-        /// Фиксированный размер объекта в эталонных единицах. Используется, когда режим размера по соответствующей оси – Fixed.
+        /// Фиксированный размер объекта в эталонных единицах. Используется, когда режим размера – Fixed.
         /// </summary>
         public Vector2 Size
         {
@@ -99,14 +96,14 @@ namespace MyGameEngine
             set => _size = value;
         }
 
-        /// <summary>Режим размера по оси X (фиксированный или растянутый).</summary>
+        /// <summary>Режим размера по оси X (Fixed или Stretch).</summary>
         public SizeMode SizeModeX
         {
             get => _sizeModeX;
             set => _sizeModeX = value;
         }
 
-        /// <summary>Режим размера по оси Y (фиксированный или растянутый).</summary>
+        /// <summary>Режим размера по оси Y (Fixed или Stretch).</summary>
         public SizeMode SizeModeY
         {
             get => _sizeModeY;
@@ -143,12 +140,12 @@ namespace MyGameEngine
 
         // ========== Иерархия ==========
 
+        /// <summary>Родительский Transform. Null для корневых объектов.</summary>
         public Transform Parent => _parent;
+        /// <summary>Список дочерних трансформов.</summary>
         public IReadOnlyList<Transform> Children => _children;
 
-        /// <summary>
-        /// Устанавливает родительский Transform.
-        /// </summary>
+        /// <summary>Устанавливает родительский Transform.</summary>
         /// <param name="parent">Новый родитель (может быть null).</param>
         /// <param name="worldPositionStays">Если true, пытается сохранить мировую позицию объекта.</param>
         public void SetParent(Transform parent, bool worldPositionStays = true)
@@ -156,30 +153,21 @@ namespace MyGameEngine
             if (_parent == parent)
                 return;
 
-            // Сохраняем текущее мировое положение, если нужно
             Vector2 worldPos = worldPositionStays ? GetWorldPosition() : Vector2.Zero;
 
-            // Удаляем из старого родителя
             _parent?._children.Remove(this);
             _parent = parent;
             _parent?._children.Add(this);
 
-            // Восстанавливаем мировое положение (упрощённо – пересчитываем эталонные координаты)
-            if (worldPositionStays && parent != null)
-            {
-                Vector2 parentWorldPos = parent.GetWorldPosition();
-                Vector2 parentSize = parent.GetWorldSize();
-                // Обратное преобразование: вычисляем Anchor и Position относительно нового родителя
-                // Для простоты пока просто оставляем локальные координаты без изменений.
-                // Полноценное сохранение мировой позиции требует сложных расчётов и здесь опущено.
-            }
+            // Упрощённая логика сохранения мировой позиции. 
+            // Для полноценного пересчёта Anchor/Position требуется обратное преобразование.
         }
 
         // ========== Методы вычисления мировых координат ==========
 
         /// <summary>
-        /// Возвращает прямоугольник родителя в мировых координатах (эталонные единицы).
-        /// Если родителя нет, возвращает прямоугольник всего экрана (0,0, ReferenceWidth, ReferenceHeight).
+        /// Возвращает прямоугольник родителя в мировых (эталонных) координатах.
+        /// Для корневого объекта возвращает эффективный размер видимой области экрана.
         /// </summary>
         private RectangleF GetParentWorldRect()
         {
@@ -191,7 +179,10 @@ namespace MyGameEngine
             }
             else
             {
-                return new RectangleF(0, 0, ResolutionManager.ReferenceWidth, ResolutionManager.ReferenceHeight);
+                // Для корня используем эффективный размер экрана в эталонных единицах.
+                // Это гарантирует, что Anchor и Stretch работают относительно видимой области.
+                var eff = ResolutionManager.EffectiveReferenceSize;
+                return new RectangleF(0, 0, eff.X, eff.Y);
             }
         }
 
@@ -246,25 +237,26 @@ namespace MyGameEngine
             return new Vector2(width, height);
         }
 
-        /// <summary>Возвращает фактическую позицию объекта на экране в пикселях (с учётом масштабирования).</summary>
+        /// <summary>Возвращает фактическую позицию объекта на экране в пикселях.</summary>
         public Vector2 GetScreenPosition()
         {
             return ResolutionManager.ToScreen(GetWorldPosition());
         }
 
-        /// <summary>Возвращает фактический размер объекта в пикселях (с учётом масштабирования).</summary>
+        /// <summary>Возвращает фактический размер объекта в пикселях.</summary>
         public Vector2 GetScreenSize()
         {
             return ResolutionManager.ToScreenSize(GetWorldSize());
         }
 
-        /// <summary>
-        /// Вспомогательная структура для передачи прямоугольника.
-        /// </summary>
+        /// <summary>Вспомогательная структура для передачи прямоугольника.</summary>
         private struct RectangleF
         {
             public float X, Y, Width, Height;
-            public RectangleF(float x, float y, float w, float h) { X = x; Y = y; Width = w; Height = h; }
+            public RectangleF(float x, float y, float w, float h) 
+            { 
+                X = x; Y = y; Width = w; Height = h; 
+            }
         }
     }
 }
